@@ -12,10 +12,11 @@ services:
       # Non-secret runtime config (safe to keep in the repo)
       - key: MCP_PATH
         value: /mcp
+      # OneNote API deprecated app-only tokens (2025-03-31) — delegated is REQUIRED.
       - key: GRAPH_AUTH_MODE
-        value: application
+        value: delegated
       - key: ONENOTE_TARGET_TYPE
-        value: user
+        value: me
       - key: ENABLE_WRITES
         value: "true"
       # Secrets / identifiers — set these in the Render dashboard (never committed)
@@ -29,4 +30,7 @@ services:
       - key: GRAPH_CLIENT_SECRET
         sync: false
       - key: ONENOTE_TARGET_ID
+        sync: false
+      # Delegated refresh token minted by `npm run authorize` — set in the Render dashboard.
+      - key: GRAPH_REFRESH_TOKEN
         sync: false

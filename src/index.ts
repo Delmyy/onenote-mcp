@@ -24,7 +24,7 @@ async function main(): Promise<void> {
     res.json({
       status: "ok",
       service: "onenote-mcp",
-      version: "tenant-fix-3",
+      version: "delegated-4",
       authMode: config.graph.authMode,
       writesEnabled: config.enableWrites,
     });

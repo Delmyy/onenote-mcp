@@ -101,10 +101,14 @@ export class HttpClient {
         }
 
         if (!res.ok) {
-          // Read (and discard) the body so the socket frees; do NOT surface it (may contain content).
-          await safeText(res);
-          log.warn("http.error", { status: res.status, latencyMs, requestId: req.requestId });
-          throw new HttpError(res.status, safeStatusMessage(res.status));
+          // Read the body to free the socket. Surface ONLY Graph's error.code/message
+          // (Microsoft-authored API diagnostics, not user content), length-capped, to aid debugging.
+          const detail = extractGraphError(await safeReadText(res));
+          log.warn("http.error", { status: res.status, latencyMs, requestId: req.requestId, code: detail?.code });
+          throw new HttpError(
+            res.status,
+            safeStatusMessage(res.status) + (detail ? ` [Graph ${detail.code}: ${detail.message}]` : ""),
+          );
         }
 
         log.debug("http.ok", { status: res.status, latencyMs, requestId: req.requestId });
@@ -151,6 +155,28 @@ async function safeText(res: Response): Promise<void> {
   } catch {
     /* ignore */
   }
+}
+
+async function safeReadText(res: Response): Promise<string> {
+  try {
+    return await res.text();
+  } catch {
+    return "";
+  }
+}
+
+/** Extract Microsoft Graph's { error: { code, message } }. Safe fields only, length-capped. */
+function extractGraphError(body: string): { code: string; message: string } | null {
+  try {
+    const j = JSON.parse(body) as { error?: { code?: string; message?: string } };
+    const e = j?.error;
+    if (e && (e.code || e.message)) {
+      return { code: String(e.code ?? "").slice(0, 60), message: String(e.message ?? "").slice(0, 300) };
+    }
+  } catch {
+    /* non-JSON error body */
+  }
+  return null;
 }
 
 function isTransient(err: unknown): boolean {

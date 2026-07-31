@@ -101,13 +101,20 @@ export class HttpClient {
         }
 
         if (!res.ok) {
-          // Read the body to free the socket. Surface ONLY Graph's error.code/message
-          // (Microsoft-authored API diagnostics, not user content), length-capped, to aid debugging.
+          // Read the body to free the socket. Surface ONLY Microsoft-authored diagnostics
+          // (error code/description + which host failed), length-capped — no user content.
           const detail = extractGraphError(await safeReadText(res));
-          log.warn("http.error", { status: res.status, latencyMs, requestId: req.requestId, code: detail?.code });
+          let host = "";
+          try {
+            host = new URL(url).host;
+          } catch {
+            /* ignore */
+          }
+          log.warn("http.error", { status: res.status, host, latencyMs, requestId: req.requestId, code: detail?.code });
           throw new HttpError(
             res.status,
-            safeStatusMessage(res.status) + (detail ? ` [Graph ${detail.code}: ${detail.message}]` : ""),
+            safeStatusMessage(res.status) +
+              ` [${host}${detail ? ` ${detail.code}: ${detail.message}` : " (no error body)"}]`,
           );
         }
 
@@ -165,18 +172,32 @@ async function safeReadText(res: Response): Promise<string> {
   }
 }
 
-/** Extract Microsoft Graph's { error: { code, message } }. Safe fields only, length-capped. */
+/**
+ * Extract Microsoft-authored error diagnostics (safe fields only, length-capped).
+ * Handles both shapes:
+ *   - Graph:            { error: { code, message } }
+ *   - OAuth token endpt:{ error: "invalid_client", error_description: "..." }
+ * Falls back to a short snippet for non-JSON bodies.
+ */
 function extractGraphError(body: string): { code: string; message: string } | null {
+  const clip = (s: unknown, n: number) => String(s ?? "").slice(0, n);
   try {
-    const j = JSON.parse(body) as { error?: { code?: string; message?: string } };
+    const j = JSON.parse(body) as {
+      error?: { code?: string; message?: string } | string;
+      error_description?: string;
+    };
     const e = j?.error;
-    if (e && (e.code || e.message)) {
-      return { code: String(e.code ?? "").slice(0, 60), message: String(e.message ?? "").slice(0, 300) };
+    if (e && typeof e === "object" && (e.code || e.message)) {
+      return { code: clip(e.code, 80), message: clip(e.message, 400) };
+    }
+    if (typeof e === "string") {
+      return { code: clip(e, 80), message: clip(j.error_description, 400) };
     }
   } catch {
-    /* non-JSON error body */
+    /* non-JSON error body — fall through to snippet */
   }
-  return null;
+  const trimmed = body.trim();
+  return trimmed ? { code: "non-json", message: trimmed.slice(0, 200) } : null;
 }
 
 function isTransient(err: unknown): boolean {

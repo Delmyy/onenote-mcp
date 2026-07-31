@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: onenote-mcp
+    runtime: node
+    plan: free
+    # Force dev dependencies (TypeScript) so `npm run build` works, then compile.
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      # Non-secret runtime config (safe to keep in the repo)
+      - key: MCP_PATH
+        value: /mcp
+      - key: GRAPH_AUTH_MODE
+        value: application
+      - key: ONENOTE_TARGET_TYPE
+        value: user
+      - key: ENABLE_WRITES
+        value: "false"
+      # Secrets / identifiers — set these in the Render dashboard (never committed)
+      - key: MCP_AUTH_TOKEN
+        sync: false
+      - key: GRAPH_TENANT_ID
+        sync: false
+      - key: GRAPH_CLIENT_ID
+        sync: false
+      - key: GRAPH_CLIENT_SECRET
+        sync: false
+      - key: ONENOTE_TARGET_ID
+        sync: false
